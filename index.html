@@ -26,6 +26,9 @@
       }
 
       const data = { foo: "bar", time: Date.now() };
+      console.log("WebApp API:", tg);
+      console.log("Отправка данных...");
+      tg.sendData(JSON.stringify({ foo: "bar", time: Date.now() }));
       tg.sendData(JSON.stringify(data));
 
       // Не вызываем tg.close(), чтобы окно не закрывалось автоматически
