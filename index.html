@@ -1,21 +1,28 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8">
   <title>Test WebApp</title>
+  <!-- Telegram Web App JS -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
   <button id="sendBtn">Отправить</button>
+
   <script>
-    const tg = window.Telegram?.WebApp || null;
+    const tg = window.Telegram?.WebApp;
+
     document.getElementById("sendBtn").addEventListener("click", () => {
       if (!tg) {
-        alert("Открыто вне Телеграма!");
+        alert("Открыто не в Telegram WebView!");
         return;
       }
-      tg.sendData("Hello!");
-      // НЕ закрываем окно вручную, чтобы точно дать время отправиться
+      // Отправляем какой-то объект
+      const data = { foo: "bar", time: Date.now() };
+      tg.sendData(JSON.stringify(data));
+
+      // Не закрываем WebApp вручную, пусть останется открытым
+      // tg.close();
     });
   </script>
 </body>
