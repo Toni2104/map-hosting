@@ -1,34 +1,21 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8"/>
+  <meta charset="UTF-8" />
   <title>Test WebApp</title>
-  <!-- Подключаем Telegram Web App JS (обязательно!) -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
   <button id="sendBtn">Отправить</button>
   <script>
-    // Получаем доступ к объекту Telegram.WebApp
-    const tg = window.Telegram.WebApp;
-
-    // Обработка нажатия кнопки
+    const tg = window.Telegram?.WebApp || null;
     document.getElementById("sendBtn").addEventListener("click", () => {
       if (!tg) {
-        alert("Не в Telegram WebView! Откройте страницу через Телеграм.");
+        alert("Открыто вне Телеграма!");
         return;
       }
-      // 1) Отправляем данные
-      tg.sendData(JSON.stringify({
-        foo: "bar",
-        time: Date.now()
-      }));
-
-      // 2) Закрываем WebApp с небольшой задержкой,
-      //    чтобы данные успели уйти (или можно вообще не закрывать)
-      setTimeout(() => {
-        tg.close();
-      }, 300);
+      tg.sendData("Hello!");
+      // НЕ закрываем окно вручную, чтобы точно дать время отправиться
     });
   </script>
 </body>
