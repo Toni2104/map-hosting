@@ -3,125 +3,129 @@
 <head>
   <meta charset="utf-8">
   <title>Выбор маршрута</title>
-  <!-- Подключаем Яндекс.Карты, lang=ru_RU, указываем свой JS-ключ -->
+  <script>
+    // Проверка на Telegram WebApp
+    const tg = (typeof window.Telegram !== 'undefined') ? window.Telegram.WebApp : null;
+    if (tg) {
+      tg.expand();
+    }
+  </script>
+  <!-- Подключаем Яндекс.Карты 2.1 (или 3.0, но пример для 2.1) -->
   <script src="https://api-maps.yandex.ru/2.1/?apikey=2021b8f1-f2b9-48e5-acca-0c61f734e5ae&lang=ru_RU"></script>
   <style>
-    #map {
-      width: 100%;
-      height: 600px;
-    }
-    body {
-      margin: 0; /* Уберём лишний отступ */
-    }
-    .controls {
-      margin: 1em;
-    }
+    #map { width: 100%; height: 60vh; }
+    body { margin: 0; font-family: sans-serif; }
+    .controls { display: flex; gap: 10px; padding: 10px; }
+    button { padding: 8px; }
   </style>
 </head>
 <body>
-  <div id="map"></div>
   <div class="controls">
+    <button id="modeA" data-mode="A">Выбираю точку А</button>
+    <button id="modeB" data-mode="B">Выбираю точку Б</button>
+    <button id="buildRoute">Построить маршрут</button>
     <button id="btnDone">Готово</button>
   </div>
+  <div id="map"></div>
 
   <script>
-    const tg = (typeof window.Telegram !== 'undefined') ? window.Telegram.WebApp : null;
-if (tg) {
-    tg.expand();
-}
-    // Инициализация Telegram WebApp
-    // const tg = window.Telegram.WebApp;
-    // tg.expand(); // развернём WebApp на максимум
-
-    let map, placemarkA, placemarkB, searchControl;
-
+    let mode = 'A'; // По умолчанию ставим A
+    let placemarkA, placemarkB, route;
+    let map;
     ymaps.ready(init);
 
     function init() {
-      // Создаём карту
       map = new ymaps.Map("map", {
-        center: [55.751244, 37.618423], // Москва
+        center: [55.751244, 37.618423],
         zoom: 10
       });
 
-      // Создаём SearchControl (строка поиска)
-      searchControl = new ymaps.control.SearchControl({
-        options: {
-          provider: 'yandex#search', // используем yandex#search
-          noPlacemark: true,         // чтобы не ставилась метка автоматически
-          placeholderContent: 'Введите адрес...',
-          size: 'large'
+      // При клике на карту ставим/переставляем A или B
+      map.events.add('click', e => {
+        const coords = e.get('coords');
+        setPlacemark(coords, mode);
+      });
+
+      // Привязываем кнопки "Выбираю точку А/В"
+      document.getElementById('modeA').addEventListener('click', () => mode = 'A');
+      document.getElementById('modeB').addEventListener('click', () => mode = 'B');
+
+      // Кнопка "Построить маршрут"
+      document.getElementById('buildRoute').addEventListener('click', () => {
+        buildRoute();
+      });
+
+      // Кнопка "Готово"
+      document.getElementById('btnDone').addEventListener('click', () => {
+        if(!placemarkA || !placemarkB) {
+          alert("Нужно выбрать обе точки A и B.");
+          return;
+        }
+        const coordsA = placemarkA.geometry.getCoordinates();
+        const coordsB = placemarkB.geometry.getCoordinates();
+        const data = {
+          start: { lat: coordsA[0], lon: coordsA[1] },
+          end:   { lat: coordsB[0], lon: coordsB[1] }
+        };
+        // Отправляем в Telegram
+        if (tg) {
+          tg.sendData(JSON.stringify(data));
+        } else {
+          alert("Данные (A,B) отправлены: " + JSON.stringify(data));
         }
       });
-      map.controls.add(searchControl);
+    }
 
-      // Когда пользователь выбирает результат поиска
-      searchControl.events.add('resultselect', function (e) {
-        // Получаем индекс выбранного результата
-        let index = e.get('index');
-        // Запрашиваем данные по этому результату
-        searchControl.getResult(index).then(function(res) {
-          // Координаты результата
-          let coords = res.geometry.getCoordinates(); // [lat, lon]
-          
-          // Перемещаем карту к найденной точке
-          map.setCenter(coords, 16);
-
-          // Ставим метку A, если она не стоит, иначе B
-          if (!placemarkA) {
-            placemarkA = createPlacemark(coords, "A", 'islands#redIcon');
-            map.geoObjects.add(placemarkA);
-          } else if (!placemarkB) {
-            placemarkB = createPlacemark(coords, "B", 'islands#blueIcon');
-            map.geoObjects.add(placemarkB);
-          } else {
-            alert("Уже выбраны две точки (A и B). При необходимости перетащите метки или удалите одну из них вручную.");
-          }
-        });
-      });
-
-      // Если пользователь кликает на карту – тоже ставим метку
-      map.events.add('click', function(e) {
-        const coords = e.get('coords'); // [lat, lon]
-        if(!placemarkA) {
-          placemarkA = createPlacemark(coords, "A", 'islands#redIcon');
+    function setPlacemark(coords, label) {
+      if (label === 'A') {
+        if (!placemarkA) {
+          placemarkA = createPlacemark(coords, 'A', 'islands#redIcon');
           map.geoObjects.add(placemarkA);
-        } else if(!placemarkB) {
-          placemarkB = createPlacemark(coords, "B", 'islands#blueIcon');
+        } else {
+          placemarkA.geometry.setCoordinates(coords);
+        }
+      } else {
+        if (!placemarkB) {
+          placemarkB = createPlacemark(coords, 'B', 'islands#blueIcon');
           map.geoObjects.add(placemarkB);
         } else {
-          alert("Уже выбраны две точки. Перетащите или удалите одну, чтобы выбрать заново.");
+          placemarkB.geometry.setCoordinates(coords);
         }
+      }
+    }
+
+    function createPlacemark(coords, text, preset) {
+      return new ymaps.Placemark(coords, {
+        iconContent: text
+      }, {
+        preset: preset,
+        draggable: true
       });
     }
 
-    // Создаём метку
-    function createPlacemark(coords, label, preset) {
-      return new ymaps.Placemark(
-        coords,
-        { iconContent: label },
-        { preset: preset, draggable: true }
-      );
-    }
-
-    // Кнопка "Готово"
-    document.getElementById('btnDone').addEventListener('click', () => {
-      if(!placemarkA || !placemarkB) {
-        alert("Нужно выбрать обе точки A и B.");
-        return;
+    // Построение маршрута через ymaps.route
+    function buildRoute() {
+      if (route) {
+        map.geoObjects.remove(route);
+        route = null;
       }
-      // Получим координаты A, B
-      const coordsA = placemarkA.geometry.getCoordinates(); // [lat, lon]
-      const coordsB = placemarkB.geometry.getCoordinates(); // [lat, lon]
-
-      // Подготовим JSON
-      const data = {
-        start: { lat: coordsA[0], lon: coordsA[1] },
-        end:   { lat: coordsB[0], lon: coordsB[1] }
-      };
-      // Отправим боту
-      tg.sendData(JSON.stringify(data));
-    });
+      if (placemarkA && placemarkB) {
+        const coordsA = placemarkA.geometry.getCoordinates();
+        const coordsB = placemarkB.geometry.getCoordinates();
+        ymaps.route([coordsA, coordsB])
+          .then(function(res) {
+            route = res;
+            map.geoObjects.add(route);
+            // Можно при желании подогнать масштаб
+            map.setBounds(route.getBounds(), { checkZoomRange: true });
+          })
+          .catch(err => {
+            console.error("Не удалось построить маршрут", err);
+          });
+      } else {
+        alert("Сначала выберите обе точки A и B!");
+      }
+    }
   </script>
 </body>
 </html>
