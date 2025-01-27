@@ -1,64 +1,137 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8">
-  <title>Debug Telegram WebApp</title>
+  <meta charset="UTF-8" />
+  <title>Выбор маршрута</title>
+  <!-- Подключение Яндекс.Карт (JS API). Для этого нужен ваш YANDEX_JS_KEY -->
+  <script src="https://api-maps.yandex.ru/2.1/?lang=ru_RU&apikey=2021b8f1-f2b9-48e5-acca-0c61f734e5ae"></script>
   <script>
-    // 1) Проверяем наличие Telegram WebApp
-    console.log("Проверяем window.Telegram...");
-    alert("Старт: Проверяем window.Telegram...");
-
-    const tg = (typeof window.Telegram !== 'undefined') ? window.Telegram.WebApp : null;
-
-    console.log("Результат tg =", tg);
-    alert("Результат tg = " + (tg ? "есть" : "нет"));
-
-    if (tg) {
-      tg.expand();
-      alert("tg.expand() выполнен");
-    } else {
-      alert("window.Telegram не найден, значит не внутри Telegram, либо Desktop не поддерживает");
-    }
+    // Проверим, доступен ли Telegram Web App
+    const tg = window.Telegram.WebApp || null;
   </script>
-  <script src="https://api-maps.yandex.ru/2.1/?apikey=2021b8f1-f2b9-48e5-acca-0c61f734e5ae&lang=ru_RU"></script>
   <style>
-    #map { width: 100%; height: 60vh; }
-    body { margin: 0; font-family: sans-serif; }
+    html, body {
+      margin: 0; padding: 0;
+      width: 100%; height: 100%;
+    }
+    #map {
+      width: 100%; 
+      height: calc(100% - 50px); 
+    }
+    #btnSubmit {
+      width: 100%;
+      height: 50px;
+      font-size: 18px;
+    }
   </style>
 </head>
 <body>
-  <button id="btnSendData">Отправить в бота</button>
   <div id="map"></div>
+  <button id="btnSubmit">Отправить</button>
 
   <script>
-    let map;
-    ymaps.ready(() => {
-      console.log("ymaps.ready сработал");
-      alert("ymaps.ready сработал");
+    ymaps.ready(init);
 
-      map = new ymaps.Map("map", {
-        center: [55.751244, 37.618423],
+    let myMap, startPlacemark, endPlacemark;
+    let startAddress = "", endAddress = "";
+    let distanceKm = 0;
+
+    function init() {
+      // Инициализация карты
+      myMap = new ymaps.Map("map", {
+        center: [55.751574, 37.573856], // Москва, как пример
         zoom: 10
       });
-    });
 
-    // При клике "Отправить в бота"
-    document.getElementById('btnSendData').addEventListener('click', () => {
-      alert("Нажали кнопку 'Отправить'");
-
-      const data = { test: "Hello from WebApp" };
-      console.log("Отправляем data =", data);
-
-      // Пробуем вызвать tg.sendData
-      if (tg) {
-        try {
-          tg.sendData(JSON.stringify(data));
-          alert("tg.sendData выполнено успешно!");
-        } catch(e) {
-          alert("Ошибка tg.sendData: " + e);
+      // По клику ставим начальную или конечную точку
+      myMap.events.add('click', function (e) {
+        const coords = e.get('coords');
+        if (!startPlacemark) {
+          // Ставим начальную
+          startPlacemark = createPlacemark(coords);
+          myMap.geoObjects.add(startPlacemark);
+          getAddress(coords, true); // isStart=true
+        } else if (!endPlacemark) {
+          // Ставим конечную
+          endPlacemark = createPlacemark(coords);
+          myMap.geoObjects.add(endPlacemark);
+          getAddress(coords, false); // isStart=false
+        } else {
+          alert("Вы уже выбрали начальную и конечную точки. Нажмите 'Отправить'.");
         }
+      });
+    }
+
+    // Создаём метку
+    function createPlacemark(coords) {
+      return new ymaps.Placemark(coords, {}, {
+        preset: 'islands#redDotIcon'
+      });
+    }
+
+    // Определяем адрес через геокодер
+    function getAddress(coords, isStart) {
+      ymaps.geocode(coords).then(function (res) {
+        let firstGeoObject = res.geoObjects.get(0);
+        let addressLine = firstGeoObject.getAddressLine();
+        if (isStart) {
+          startAddress = addressLine;
+        } else {
+          endAddress = addressLine;
+          // Когда выбрали обе точки — можно попытаться посчитать расстояние
+          if (startPlacemark && endPlacemark) {
+            calcRoute();
+          }
+        }
+      });
+    }
+
+    // Рассчитываем примерный маршрут
+    function calcRoute() {
+      // С помощью встроенного в JS-API роутера Яндекс (Multiroute)
+      let startCoords = startPlacemark.geometry.getCoordinates();
+      let endCoords = endPlacemark.geometry.getCoordinates();
+
+      const multiRoute = new ymaps.multiRouter.MultiRoute({
+        referencePoints: [
+          startCoords, 
+          endCoords
+        ]
+      });
+
+      multiRoute.model.events.add('requestsuccess', function() {
+        // Данные маршрута получены
+        let activeRoute = multiRoute.getActiveRoute();
+        if (activeRoute) {
+          // Получаем расстояние (в метрах)
+          let distance = activeRoute.properties.get("distance").value;
+          distanceKm = distance / 1000;
+        }
+      });
+      myMap.geoObjects.add(multiRoute);
+    }
+
+    // Обработка кнопки "Отправить"
+    const btn = document.getElementById("btnSubmit");
+    btn.addEventListener("click", () => {
+      if (!startAddress || !endAddress) {
+        alert("Сначала выберите начальную и конечную точки на карте.");
+        return;
+      }
+      // Формируем объект данных
+      const dataToSend = {
+        start_address: startAddress,
+        end_address: endAddress,
+        distance_km: distanceKm
+      };
+
+      // Отправляем строку JSON в бота
+      if (tg) {
+        tg.sendData(JSON.stringify(dataToSend));
+        // После отправки можно закрыть WebApp (по желанию)
+        tg.close();
       } else {
-        alert("tg не обнаружен, значит не в Telegram");
+        alert("Telegram WebApp не доступен. Проверьте в Telegram.");
       }
     });
   </script>
