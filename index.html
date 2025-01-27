@@ -13,6 +13,10 @@
   <script>
     // Ссылка на объект Telegram WebApp (если открыт во встроенном браузере Телеграма)
     const tg = window.Telegram?.WebApp;
+    if (tg) {
+        tg.ready();
+        tg.expand();
+    }
 
     // Функция, которую вызываем по нажатию кнопки
     function sendData() {
