@@ -6,7 +6,7 @@
   <!-- Telegram Web App JS -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
-  <!-- Яндекс.Карты (JS API). Вставьте свой YANDEX_JS_KEY. -->
+  <!-- Яндекс.Карты (JS API). Подставьте свой реальный ключ. -->
   <script src="https://api-maps.yandex.ru/2.1/?lang=ru_RU&apikey=2021b8f1-f2b9-48e5-acca-0c61f734e5ae"></script>
 
   <style>
@@ -44,8 +44,7 @@
       background: #fff;
       border: 1px solid #ccc;
       list-style: none;
-      margin: 0;
-      padding: 0;
+      margin: 0; padding: 0;
       z-index: 9999;
     }
     #suggestList li {
@@ -187,7 +186,7 @@
       multiRoute.model.events.add('requestsuccess', () => {
         const activeRoute = multiRoute.getActiveRoute();
         if (activeRoute) {
-          const distance = activeRoute.properties.get('distance').value; // метры
+          const distance = activeRoute.properties.get('distance').value; // в метрах
           distanceKm = distance / 1000;
         }
       });
@@ -226,6 +225,7 @@
             if (items.length > 0) {
               items.forEach(sug => {
                 const li = document.createElement("li");
+                // displayName или value
                 li.textContent = sug.displayName || sug.value;
                 li.addEventListener("click", () => {
                   searchInput.value = sug.value;
@@ -248,7 +248,7 @@
       }
     });
 
-    // При клике вне списка — скрываем
+    // При клике вне списка скрываем его
     document.addEventListener("click", (e) => {
       if (!searchContainerContains(e.target)) {
         suggestList.style.display = "none";
@@ -288,10 +288,10 @@
         return;
       }
 
-      // Генерируем ссылку на маршрут (но пользователю её не показываем).
+      // Генерируем ссылку на маршрут для менеджера
       let routeLink = "";
       if (startCoords && endCoords) {
-        // Проверяйте порядок lat/lon. Обычно Yandex Maps URL: lat,lon
+        // Проверяйте порядок lat/lon
         routeLink = `https://yandex.ru/maps/?rtext=${startCoords[0]},${startCoords[1]}~${endCoords[0]},${endCoords[1]}&rtt=auto`;
       }
 
