@@ -18,32 +18,52 @@
     #controls {
       display: flex;
       width: 100%;
-      height: 50px;
+      height: 40px;
     }
     .modeBtn {
       flex: 1; 
-      font-size: 16px;
+      font-size: 14px;
       cursor: pointer;
     }
-    #map {
-      width: 100%; 
-      height: calc(100% - 100px);
-    }
-    #submitRow {
-      display: flex;
+    #searchContainer {
+      position: relative;
       width: 100%;
-      height: 50px;
-    }
-    #btnSubmit {
-      flex: 1;
-      font-size: 16px;
-      cursor: pointer;
     }
     #searchInput {
       width: 100%;
       box-sizing: border-box;
-      padding: 8px;
+      padding: 5px;
       font-size: 14px;
+    }
+    #suggestList {
+      position: absolute;
+      top: 30px;
+      width: 100%;
+      max-height: 200px;
+      overflow-y: auto;
+      background: #fff;
+      border: 1px solid #ccc;
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      z-index: 9999;
+    }
+    #suggestList li {
+      padding: 5px;
+      cursor: pointer;
+    }
+    #suggestList li:hover {
+      background: #eaeaea;
+    }
+    #map {
+      width: 100%; 
+      height: calc(100% - 90px);
+    }
+    #btnSubmit {
+      width: 100%;
+      height: 50px;
+      font-size: 16px;
+      cursor: pointer;
     }
   </style>
 </head>
@@ -54,16 +74,17 @@
     <button id="endBtn" class="modeBtn">Конечная точка</button>
   </div>
 
-  <!-- Поле поиска адреса (автодополнение) -->
-  <input type="text" id="searchInput" placeholder="Введите адрес..." />
+  <!-- Поле поиска + выпадающий список подсказок -->
+  <div id="searchContainer">
+    <input type="text" id="searchInput" placeholder="Введите адрес..." autocomplete="off" />
+    <ul id="suggestList" style="display: none;"></ul>
+  </div>
 
   <!-- Карта -->
   <div id="map"></div>
 
   <!-- Кнопка "Отправить" -->
-  <div id="submitRow">
-    <button id="btnSubmit">Отправить</button>
-  </div>
+  <button id="btnSubmit">Отправить</button>
 
   <script>
     const tg = window.Telegram?.WebApp || null;
@@ -76,7 +97,6 @@
     let distanceKm = 0.0;
     let multiRoute = null;
 
-    // При загрузке Яндекс API инициализируем карту
     ymaps.ready(initMap);
 
     function initMap() {
@@ -96,7 +116,7 @@
       });
     }
 
-    // Установить/обновить начальную точку
+    // Установить начальную точку
     function setStartPoint(coords) {
       if (!startPlacemark) {
         startPlacemark = createPlacemark(coords, "Начало");
@@ -105,11 +125,11 @@
         startPlacemark.geometry.setCoordinates(coords);
       }
       startCoords = coords;
-      getAddress(coords, true);
+      geocodeAndSetAddress(coords, true);
       recalcRoute();
     }
 
-    // Установить/обновить конечную точку
+    // Установить конечную точку
     function setEndPoint(coords) {
       if (!endPlacemark) {
         endPlacemark = createPlacemark(coords, "Конец");
@@ -118,7 +138,7 @@
         endPlacemark.geometry.setCoordinates(coords);
       }
       endCoords = coords;
-      getAddress(coords, false);
+      geocodeAndSetAddress(coords, false);
       recalcRoute();
     }
 
@@ -130,24 +150,29 @@
       });
     }
 
-    // Получаем адрес через геокодер
-    function getAddress(coords, isStart) {
+    // Геокодирование + проверка ошибок
+    function geocodeAndSetAddress(coords, isStart) {
       ymaps.geocode(coords).then(res => {
-        let firstGeoObject = res.geoObjects.get(0);
+        const firstGeoObject = res.geoObjects.get(0);
+        if (!firstGeoObject) {
+          alert("Не удалось определить адрес, попробуйте ещё раз.");
+          return;
+        }
         let addr = firstGeoObject.getAddressLine();
         if (isStart) {
           startAddress = addr;
         } else {
           endAddress = addr;
         }
+      }).catch(err => {
+        alert("Ошибка при геокодировании: " + err);
       });
     }
 
-    // Пересчитываем маршрут, если есть обе точки
+    // Перерасчёт маршрута
     function recalcRoute() {
       if (!startCoords || !endCoords) return;
 
-      // Удаляем предыдущий маршрут
       if (multiRoute) {
         myMap.geoObjects.remove(multiRoute);
       }
@@ -170,7 +195,7 @@
       myMap.geoObjects.add(multiRoute);
     }
 
-    // Кнопки переключения режима
+    // Кнопки режима
     const startBtn = document.getElementById("startBtn");
     const endBtn = document.getElementById("endBtn");
 
@@ -179,79 +204,105 @@
       startBtn.style.backgroundColor = "#bde1bd";
       endBtn.style.backgroundColor = "";
     });
-
     endBtn.addEventListener("click", () => {
       mode = "end";
       endBtn.style.backgroundColor = "#bde1bd";
       startBtn.style.backgroundColor = "";
     });
 
-    // Обработка поля поиска (автодополнение, упрощённый вариант)
+    // Поле поиска + подсказки
     const searchInput = document.getElementById("searchInput");
+    const suggestList = document.getElementById("suggestList");
     let suggestTimer;
+
     searchInput.addEventListener("input", () => {
       clearTimeout(suggestTimer);
       let query = searchInput.value.trim();
-      if (query.length > 2) {
+      if (query.length >= 3) {
         suggestTimer = setTimeout(() => {
-          // Используем ymaps.suggest
           ymaps.suggest(query).then(items => {
-            // Можно показывать выпадающий список, в упрощённом виде
-            // здесь просто берём первый ответ
+            // Очищаем список
+            suggestList.innerHTML = "";
             if (items.length > 0) {
-              // Берём первый вариант, геокодим и ставим точку
-              let suggestion = items[0].value;
-              // Можно дополнительно отобразить выпадайку, 
-              // тут для простоты сразу ставим точку
-              setAddressByGeocode(suggestion);
+              items.forEach(sug => {
+                const li = document.createElement("li");
+                li.textContent = sug.displayName || sug.value;
+                li.addEventListener("click", () => {
+                  searchInput.value = sug.value;
+                  suggestList.style.display = "none";
+                  // Геокодим и ставим точку
+                  setAddressByGeocode(sug.value);
+                });
+                suggestList.appendChild(li);
+              });
+              suggestList.style.display = "block";
+            } else {
+              suggestList.style.display = "none";
             }
+          }).catch(err => {
+            console.log("Suggest error:", err);
           });
-        }, 500);
+        }, 400);
+      } else {
+        suggestList.style.display = "none";
       }
     });
 
+    // При клике вне списка — скрываем
+    document.addEventListener("click", (e) => {
+      if (!searchContainerContains(e.target)) {
+        suggestList.style.display = "none";
+      }
+    });
+    function searchContainerContains(target) {
+      return (target === searchInput || target === suggestList || suggestList.contains(target));
+    }
+
     function setAddressByGeocode(address) {
       ymaps.geocode(address).then(res => {
-        let obj = res.geoObjects.get(0);
-        if (obj) {
-          let coords = obj.geometry.getCoordinates();
-          if (mode === "start") {
-            setStartPoint(coords);
-          } else {
-            setEndPoint(coords);
-          }
+        const obj = res.geoObjects.get(0);
+        if (!obj) {
+          alert("Адрес не найден, попробуйте скорректировать ввод.");
+          return;
         }
+        const coords = obj.geometry.getCoordinates();
+        if (mode === "start") {
+          setStartPoint(coords);
+        } else {
+          setEndPoint(coords);
+        }
+      }).catch(err => {
+        alert("Ошибка при геокодировании: " + err);
       });
     }
 
     // Кнопка "Отправить"
-    document.getElementById("btnSubmit").addEventListener("click", () => {
+    const btnSubmit = document.getElementById("btnSubmit");
+    btnSubmit.addEventListener("click", () => {
       if (!startAddress || !endAddress) {
-        alert("Сначала укажите начальную и конечную точки (кликами по карте или поиском).");
+        alert("Укажите начальный и конечный адрес.");
         return;
       }
       if (!tg) {
-        alert("Telegram WebApp не обнаружен!");
+        alert("Открыто не в Telegram WebView!");
         return;
       }
-      // Формируем ссылку для курьера
+
+      // Генерируем ссылку на маршрут (но пользователю её не показываем).
       let routeLink = "";
       if (startCoords && endCoords) {
-        // Yandex Maps URL: https://yandex.ru/maps/?rtext=<lat1>,<lon1>~<lat2>,<lon2>&rtt=auto
-        // НО в geocoder/route координаты [lat, lon], а в URL [lat,lon], тут всё совпадает
-        // Иногда надо местами менять lat/lon, проверяйте формат
+        // Проверяйте порядок lat/lon. Обычно Yandex Maps URL: lat,lon
         routeLink = `https://yandex.ru/maps/?rtext=${startCoords[0]},${startCoords[1]}~${endCoords[0]},${endCoords[1]}&rtt=auto`;
       }
 
       const dataToSend = {
         start_address: startAddress,
         end_address: endAddress,
-        distance_km: Number(distanceKm.toFixed(2)),
+        distance_km: +distanceKm.toFixed(2),
         route_link: routeLink
       };
 
       tg.sendData(JSON.stringify(dataToSend));
-      // Закрываем окно (по желанию)
       tg.close();
     });
   </script>
