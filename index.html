@@ -3,12 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <title>Выбор маршрута</title>
-
-  <!-- Подключаем Telegram Web App JS -->
+  <!-- Telegram Web App JS -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
-  <!-- Подключаем Яндекс.Карты (JS API). Впишите свой YANDEX_JS_KEY -->
-  <script src="https://api-maps.yandex.ru/2.1/?lang=ru_RU&apikey=2021b8f1-f2b9-48e5-acca-0c61f734e5ae"></script>
+  <!-- Яндекс.Карты (JS API). Вставьте свой YANDEX_JS_KEY. -->
+  <script src="https://api-maps.yandex.ru/2.1/?lang=ru_RU&apikey=ВАШ_YANDEX_JS_KEY"></script>
 
   <style>
     html, body {
@@ -16,98 +15,143 @@
       width: 100%; height: 100%;
       font-family: sans-serif;
     }
-    #map {
-      width: 100%; 
-      height: calc(100% - 50px);
-    }
-    #btnSubmit {
+    #controls {
+      display: flex;
       width: 100%;
       height: 50px;
-      font-size: 18px;
+    }
+    .modeBtn {
+      flex: 1; 
+      font-size: 16px;
       cursor: pointer;
+    }
+    #map {
+      width: 100%; 
+      height: calc(100% - 100px);
+    }
+    #submitRow {
+      display: flex;
+      width: 100%;
+      height: 50px;
+    }
+    #btnSubmit {
+      flex: 1;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    #searchInput {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 8px;
+      font-size: 14px;
     }
   </style>
 </head>
 <body>
+  <!-- Кнопки переключения режима -->
+  <div id="controls">
+    <button id="startBtn" class="modeBtn" style="background-color: #bde1bd;">Начальная точка</button>
+    <button id="endBtn" class="modeBtn">Конечная точка</button>
+  </div>
+
+  <!-- Поле поиска адреса (автодополнение) -->
+  <input type="text" id="searchInput" placeholder="Введите адрес..." />
+
+  <!-- Карта -->
   <div id="map"></div>
-  <button id="btnSubmit">Отправить</button>
+
+  <!-- Кнопка "Отправить" -->
+  <div id="submitRow">
+    <button id="btnSubmit">Отправить</button>
+  </div>
 
   <script>
-    // Если страница открыта внутри Telegram, 
-    // window.Telegram.WebApp будет доступен.
-    const tg = window.Telegram.WebApp || null;
+    const tg = window.Telegram?.WebApp || null;
 
-    // Глобальные переменные: карта, метки, маршрут
     let myMap;
+    let mode = "start"; // "start" или "end"
     let startPlacemark, endPlacemark;
     let startAddress = "", endAddress = "";
+    let startCoords = null, endCoords = null;
     let distanceKm = 0.0;
-    let multiRoute;  // для хранения созданного маршрута
+    let multiRoute = null;
 
+    // При загрузке Яндекс API инициализируем карту
     ymaps.ready(initMap);
 
     function initMap() {
-      // Инициализация карты
       myMap = new ymaps.Map("map", {
-        center: [55.751574, 37.573856], // Москва, как пример
+        center: [55.751574, 37.573856], // Пример: Москва
         zoom: 10
       });
 
-      // Обработка клика на карту
-      myMap.events.add('click', (e) => {
+      // Обработка клика по карте
+      myMap.events.add('click', e => {
         const coords = e.get('coords');
-        // Если не выбрана стартовая точка — ставим
-        if (!startPlacemark) {
-          startPlacemark = createPlacemark(coords);
-          myMap.geoObjects.add(startPlacemark);
-          getAddress(coords, true); // isStart = true
-        }
-        // Если выбрана стартовая, но нет конечной — ставим конечную
-        else if (!endPlacemark) {
-          endPlacemark = createPlacemark(coords);
-          myMap.geoObjects.add(endPlacemark);
-          getAddress(coords, false); // isStart = false
-        }
-        else {
-          alert("Уже выбраны две точки (начало и конец). Для изменения перезагрузите страницу или обновите точки.");
-        }
-      });
-    }
-
-    function createPlacemark(coords) {
-      return new ymaps.Placemark(coords, {}, {
-        preset: 'islands#redDotIcon',
-        draggable: false
-      });
-    }
-
-    function getAddress(coords, isStart) {
-      // Обращаемся к геокодеру, чтобы получить текстовый адрес
-      ymaps.geocode(coords).then((res) => {
-        const firstGeoObject = res.geoObjects.get(0);
-        const addressLine = firstGeoObject.getAddressLine();
-        if (isStart) {
-          startAddress = addressLine;
+        if (mode === "start") {
+          setStartPoint(coords);
         } else {
-          endAddress = addressLine;
-        }
-        // Если обе точки выбраны — считаем маршрут
-        if (startPlacemark && endPlacemark) {
-          calcRoute();
+          setEndPoint(coords);
         }
       });
     }
 
-    function calcRoute() {
-      // Удалим предыдущий маршрут, если был
+    // Установить/обновить начальную точку
+    function setStartPoint(coords) {
+      if (!startPlacemark) {
+        startPlacemark = createPlacemark(coords, "Начало");
+        myMap.geoObjects.add(startPlacemark);
+      } else {
+        startPlacemark.geometry.setCoordinates(coords);
+      }
+      startCoords = coords;
+      getAddress(coords, true);
+      recalcRoute();
+    }
+
+    // Установить/обновить конечную точку
+    function setEndPoint(coords) {
+      if (!endPlacemark) {
+        endPlacemark = createPlacemark(coords, "Конец");
+        myMap.geoObjects.add(endPlacemark);
+      } else {
+        endPlacemark.geometry.setCoordinates(coords);
+      }
+      endCoords = coords;
+      getAddress(coords, false);
+      recalcRoute();
+    }
+
+    function createPlacemark(coords, label) {
+      return new ymaps.Placemark(coords, {
+        hintContent: label
+      }, {
+        preset: 'islands#redDotIcon'
+      });
+    }
+
+    // Получаем адрес через геокодер
+    function getAddress(coords, isStart) {
+      ymaps.geocode(coords).then(res => {
+        let firstGeoObject = res.geoObjects.get(0);
+        let addr = firstGeoObject.getAddressLine();
+        if (isStart) {
+          startAddress = addr;
+        } else {
+          endAddress = addr;
+        }
+      });
+    }
+
+    // Пересчитываем маршрут, если есть обе точки
+    function recalcRoute() {
+      if (!startCoords || !endCoords) return;
+
+      // Удаляем предыдущий маршрут
       if (multiRoute) {
         myMap.geoObjects.remove(multiRoute);
       }
 
-      const startCoords = startPlacemark.geometry.getCoordinates();
-      const endCoords = endPlacemark.geometry.getCoordinates();
-
-      // Создаём многофункциональный маршрут
       multiRoute = new ymaps.multiRouter.MultiRoute({
         referencePoints: [startCoords, endCoords],
         params: { routingMode: 'auto' }
@@ -115,12 +159,10 @@
         boundsAutoApply: true
       });
 
-      // Событие срабатывает при успешном построении маршрута
       multiRoute.model.events.add('requestsuccess', () => {
         const activeRoute = multiRoute.getActiveRoute();
         if (activeRoute) {
-          // Берём расстояние в метрах
-          const distance = activeRoute.properties.get("distance").value;
+          const distance = activeRoute.properties.get('distance').value; // метры
           distanceKm = distance / 1000;
         }
       });
@@ -128,29 +170,88 @@
       myMap.geoObjects.add(multiRoute);
     }
 
-    // Обработка кнопки "Отправить"
-    const btn = document.getElementById("btnSubmit");
-    btn.addEventListener("click", () => {
+    // Кнопки переключения режима
+    const startBtn = document.getElementById("startBtn");
+    const endBtn = document.getElementById("endBtn");
+
+    startBtn.addEventListener("click", () => {
+      mode = "start";
+      startBtn.style.backgroundColor = "#bde1bd";
+      endBtn.style.backgroundColor = "";
+    });
+
+    endBtn.addEventListener("click", () => {
+      mode = "end";
+      endBtn.style.backgroundColor = "#bde1bd";
+      startBtn.style.backgroundColor = "";
+    });
+
+    // Обработка поля поиска (автодополнение, упрощённый вариант)
+    const searchInput = document.getElementById("searchInput");
+    let suggestTimer;
+    searchInput.addEventListener("input", () => {
+      clearTimeout(suggestTimer);
+      let query = searchInput.value.trim();
+      if (query.length > 2) {
+        suggestTimer = setTimeout(() => {
+          // Используем ymaps.suggest
+          ymaps.suggest(query).then(items => {
+            // Можно показывать выпадающий список, в упрощённом виде
+            // здесь просто берём первый ответ
+            if (items.length > 0) {
+              // Берём первый вариант, геокодим и ставим точку
+              let suggestion = items[0].value;
+              // Можно дополнительно отобразить выпадайку, 
+              // тут для простоты сразу ставим точку
+              setAddressByGeocode(suggestion);
+            }
+          });
+        }, 500);
+      }
+    });
+
+    function setAddressByGeocode(address) {
+      ymaps.geocode(address).then(res => {
+        let obj = res.geoObjects.get(0);
+        if (obj) {
+          let coords = obj.geometry.getCoordinates();
+          if (mode === "start") {
+            setStartPoint(coords);
+          } else {
+            setEndPoint(coords);
+          }
+        }
+      });
+    }
+
+    // Кнопка "Отправить"
+    document.getElementById("btnSubmit").addEventListener("click", () => {
       if (!startAddress || !endAddress) {
-        alert("Сначала выберите на карте начальную и конечную точки.");
+        alert("Сначала укажите начальную и конечную точки (кликами по карте или поиском).");
         return;
       }
       if (!tg) {
-        alert("Telegram WebApp не обнаружен. Откройте страницу через Телеграм.");
+        alert("Telegram WebApp не обнаружен!");
         return;
       }
+      // Формируем ссылку для курьера
+      let routeLink = "";
+      if (startCoords && endCoords) {
+        // Yandex Maps URL: https://yandex.ru/maps/?rtext=<lat1>,<lon1>~<lat2>,<lon2>&rtt=auto
+        // НО в geocoder/route координаты [lat, lon], а в URL [lat,lon], тут всё совпадает
+        // Иногда надо местами менять lat/lon, проверяйте формат
+        routeLink = `https://yandex.ru/maps/?rtext=${startCoords[0]},${startCoords[1]}~${endCoords[0]},${endCoords[1]}&rtt=auto`;
+      }
 
-      // Формируем JSON-данные для отправки боту
       const dataToSend = {
         start_address: startAddress,
         end_address: endAddress,
-        distance_km: Number(distanceKm.toFixed(2))
+        distance_km: Number(distanceKm.toFixed(2)),
+        route_link: routeLink
       };
 
-      // Отправляем строку JSON в бота
       tg.sendData(JSON.stringify(dataToSend));
-
-      // Можно закрыть WebApp (по желанию)
+      // Закрываем окно (по желанию)
       tg.close();
     });
   </script>
