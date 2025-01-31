@@ -1,310 +1,406 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8" />
-  <title>Выбор маршрута</title>
-  <!-- Telegram Web App JS -->
+  <meta charset="UTF-8">
+  <title>Моя карта (стиль Яндекс.Такси)</title>
+  <!-- Подключаем Telegram Web App JS -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
-  <!-- Яндекс.Карты (JS API). Подставьте свой реальный ключ. -->
+  <!-- Подключаем Яндекс.Карты (JS API). Замените на свой YANDEX_JS_KEY -->
   <script src="https://api-maps.yandex.ru/2.1/?lang=ru_RU&apikey=2021b8f1-f2b9-48e5-acca-0c61f734e5ae"></script>
 
   <style>
-    html, body {
-      margin: 0; padding: 0;
-      width: 100%; height: 100%;
+    /* Общий сброс стилей */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
       font-family: sans-serif;
     }
-    #controls {
-      display: flex;
+    body, html {
       width: 100%;
-      height: 40px;
+      height: 100%;
+      background: #fff;
     }
-    .modeBtn {
-      flex: 1; 
-      font-size: 14px;
-      cursor: pointer;
-    }
-    #searchContainer {
+    .header {
       position: relative;
       width: 100%;
+      background: #fff;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+      z-index: 10;
+      padding: 8px;
     }
-    #searchInput {
+    .header h2 {
+      text-align: center;
+      margin-bottom: 8px;
+    }
+    .address-container {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 0 8px;
+      margin-bottom: 8px;
+    }
+    .address-block {
+      position: relative;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      padding: 4px 8px;
+    }
+    .address-block label {
+      font-size: 13px;
+      color: #888;
+    }
+    .address-block input {
       width: 100%;
-      box-sizing: border-box;
-      padding: 5px;
+      border: none;
+      outline: none;
       font-size: 14px;
+      padding: 2px 0;
     }
-    #suggestList {
+    .address-block button {
       position: absolute;
-      top: 30px;
-      width: 100%;
-      max-height: 200px;
+      right: 4px;
+      top: 4px;
+      bottom: 4px;
+      margin: auto 0;
+      background: #f0f0f0;
+      border: none;
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .suggest-list {
+      position: absolute;
+      left: 0; right: 0;
+      top: 58px;
+      max-height: 180px;
       overflow-y: auto;
       background: #fff;
       border: 1px solid #ccc;
-      list-style: none;
-      margin: 0; padding: 0;
       z-index: 9999;
+      display: none;
     }
-    #suggestList li {
-      padding: 5px;
+    .suggest-item {
+      padding: 6px 8px;
       cursor: pointer;
     }
-    #suggestList li:hover {
-      background: #eaeaea;
+    .suggest-item:hover {
+      background: #f4f4f4;
+    }
+    .btn-row {
+      display: flex;
+      gap: 8px;
+      margin: 8px;
+    }
+    .btn-row button {
+      flex: 1;
+      padding: 10px;
+      font-size: 14px;
+      cursor: pointer;
+      border: none;
+      border-radius: 6px;
     }
     #map {
-      width: 100%; 
-      height: calc(100% - 90px);
+      position: absolute;
+      top: 200px;
+      bottom: 60px;
+      left: 0;
+      right: 0;
     }
-    #btnSubmit {
-      width: 100%;
-      height: 50px;
+    .confirm-btn {
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      height: 60px;
+      background: #fff;
+      box-shadow: 0 -2px 5px rgba(0,0,0,0.15);
+      z-index: 15;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .confirm-btn button {
+      padding: 12px 20px;
+      border-radius: 8px;
+      background: #fc5230;
+      color: #fff;
+      border: none;
       font-size: 16px;
       cursor: pointer;
+    }
+    .hidden {
+      display: none !important;
     }
   </style>
 </head>
 <body>
-  <!-- Кнопки переключения режима -->
-  <div id="controls">
-    <button id="startBtn" class="modeBtn" style="background-color: #bde1bd;">Начальная точка</button>
-    <button id="endBtn" class="modeBtn">Конечная точка</button>
+
+<div class="header">
+  <h2>Выберите адреса</h2>
+  <div class="address-container">
+    <!-- Адрес 1 -->
+    <div class="address-block" id="fromBlock">
+      <label for="fromInput">Откуда:</label>
+      <input type="text" id="fromInput" placeholder="Моё местоположение" autocomplete="off"/>
+      <button type="button" id="fromMapBtn">На карте</button>
+      <!-- Список подсказок -->
+      <div class="suggest-list" id="fromSuggestList"></div>
+    </div>
+    <!-- Адрес 2 -->
+    <div class="address-block" id="toBlock">
+      <label for="toInput">Куда:</label>
+      <input type="text" id="toInput" placeholder="Адрес назначения" autocomplete="off"/>
+      <button type="button" id="toMapBtn">На карте</button>
+      <!-- Список подсказок -->
+      <div class="suggest-list" id="toSuggestList"></div>
+    </div>
   </div>
+</div>
 
-  <!-- Поле поиска + выпадающий список подсказок -->
-  <div id="searchContainer">
-    <input type="text" id="searchInput" placeholder="Введите адрес..." autocomplete="on" />
-    <ul id="suggestList" style="display: none;"></ul>
-  </div>
+<div id="map"></div>
 
-  <!-- Карта -->
-  <div id="map"></div>
+<!-- Кнопка "Подтвердить адреса" -->
+<div class="confirm-btn hidden" id="confirmContainer">
+  <button id="btnConfirm">Подтвердить адреса</button>
+</div>
 
-  <!-- Кнопка "Отправить" -->
-  <button id="btnSubmit">Отправить</button>
+<script>
+const tg = window.Telegram?.WebApp || null;
 
-  <script>
-    const tg = window.Telegram?.WebApp || null;
+let myMap;
+let fromCoords = null, toCoords = null;
+let fromAddress = "", toAddress = "";
+let fromPlacemark, toPlacemark;
+let multiRoute = null;
+let fromReady = false, toReady = false;
 
-    let myMap;
-    let mode = "start"; // "start" или "end"
-    let startPlacemark, endPlacemark;
-    let startAddress = "", endAddress = "";
-    let startCoords = null, endCoords = null;
-    let distanceKm = 0.0;
-    let multiRoute = null;
+ymaps.ready(initMap);
 
-    ymaps.ready(initMap);
+function initMap() {
+  myMap = new ymaps.Map("map", {
+    center: [55.751574, 37.573856], // Москва по умолчанию
+    zoom: 10
+  });
 
-    function initMap() {
-      myMap = new ymaps.Map("map", {
-        center: [55.751574, 37.573856], // Пример: Москва
-        zoom: 10
-      });
-
-      // Обработка клика по карте
-      myMap.events.add('click', e => {
-        const coords = e.get('coords');
-        if (mode === "start") {
-          setStartPoint(coords);
-        } else {
-          setEndPoint(coords);
-        }
-      });
-    }
-
-    // Установить начальную точку
-    function setStartPoint(coords) {
-      if (!startPlacemark) {
-        startPlacemark = createPlacemark(coords, "Начало");
-        myMap.geoObjects.add(startPlacemark);
-      } else {
-        startPlacemark.geometry.setCoordinates(coords);
-      }
-      startCoords = coords;
-      geocodeAndSetAddress(coords, true);
-      recalcRoute();
-    }
-
-    // Установить конечную точку
-    function setEndPoint(coords) {
-      if (!endPlacemark) {
-        endPlacemark = createPlacemark(coords, "Конец");
-        myMap.geoObjects.add(endPlacemark);
-      } else {
-        endPlacemark.geometry.setCoordinates(coords);
-      }
-      endCoords = coords;
-      geocodeAndSetAddress(coords, false);
-      recalcRoute();
-    }
-
-    function createPlacemark(coords, label) {
-      return new ymaps.Placemark(coords, {
-        hintContent: label
-      }, {
-        preset: 'islands#redDotIcon'
-      });
-    }
-
-    // Геокодирование + проверка ошибок
-    function geocodeAndSetAddress(coords, isStart) {
-      ymaps.geocode(coords).then(res => {
-        const firstGeoObject = res.geoObjects.get(0);
-        if (!firstGeoObject) {
-          alert("Не удалось определить адрес, попробуйте ещё раз.");
-          return;
-        }
-        let addr = firstGeoObject.getAddressLine();
-        if (isStart) {
-          startAddress = addr;
-        } else {
-          endAddress = addr;
-        }
-      }).catch(err => {
-        alert("Ошибка при геокодировании: " + err);
-      });
-    }
-
-    // Перерасчёт маршрута
-    function recalcRoute() {
-      if (!startCoords || !endCoords) return;
-
-      if (multiRoute) {
-        myMap.geoObjects.remove(multiRoute);
-      }
-
-      multiRoute = new ymaps.multiRouter.MultiRoute({
-        referencePoints: [startCoords, endCoords],
-        params: { routingMode: 'auto' }
-      }, {
-        boundsAutoApply: true
-      });
-
-      multiRoute.model.events.add('requestsuccess', () => {
-        const activeRoute = multiRoute.getActiveRoute();
-        if (activeRoute) {
-          const distance = activeRoute.properties.get('distance').value; // в метрах
-          distanceKm = distance / 1000;
-        }
-      });
-
-      myMap.geoObjects.add(multiRoute);
-    }
-
-    // Кнопки режима
-    const startBtn = document.getElementById("startBtn");
-    const endBtn = document.getElementById("endBtn");
-
-    startBtn.addEventListener("click", () => {
-      mode = "start";
-      startBtn.style.backgroundColor = "#bde1bd";
-      endBtn.style.backgroundColor = "";
+  // Пытаемся получить геолокацию через браузер
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition((pos) => {
+      const lat = pos.coords.latitude;
+      const lon = pos.coords.longitude;
+      myMap.setCenter([lat, lon], 14);
+      setFromPoint([lat, lon]); // Устанавливаем начальную точку как текущее положение
+      geocodePoint([lat, lon], true);
+    }, (err) => {
+      console.log("Geolocation error:", err);
     });
-    endBtn.addEventListener("click", () => {
-      mode = "end";
-      endBtn.style.backgroundColor = "#bde1bd";
-      startBtn.style.backgroundColor = "";
-    });
+  }
+}
 
-    // Поле поиска + подсказки
-    const searchInput = document.getElementById("searchInput");
-    const suggestList = document.getElementById("suggestList");
-    let suggestTimer;
+// "На карте" для from
+document.getElementById("fromMapBtn").addEventListener("click", () => {
+  setActiveMapSelection("from");
+});
+// "На карте" для to
+document.getElementById("toMapBtn").addEventListener("click", () => {
+  setActiveMapSelection("to");
+});
 
-    searchInput.addEventListener("input", () => {
-      clearTimeout(suggestTimer);
-      let query = searchInput.value.trim();
-      if (query.length >= 3) {
-        suggestTimer = setTimeout(() => {
-          ymaps.suggest(query).then(items => {
-            // Очищаем список
-            suggestList.innerHTML = "";
-            if (items.length > 0) {
-              items.forEach(sug => {
-                const li = document.createElement("li");
-                // displayName или value
-                li.textContent = sug.displayName || sug.value;
-                li.addEventListener("click", () => {
-                  searchInput.value = sug.value;
-                  suggestList.style.display = "none";
-                  // Геокодим и ставим точку
-                  setAddressByGeocode(sug.value);
-                });
-                suggestList.appendChild(li);
-              });
-              suggestList.style.display = "block";
-            } else {
-              suggestList.style.display = "none";
-            }
-          }).catch(err => {
-            console.log("Suggest error:", err);
-          });
-        }, 400);
-      } else {
-        suggestList.style.display = "none";
-      }
-    });
-
-    // При клике вне списка скрываем его
-    document.addEventListener("click", (e) => {
-      if (!searchContainerContains(e.target)) {
-        suggestList.style.display = "none";
-      }
-    });
-    function searchContainerContains(target) {
-      return (target === searchInput || target === suggestList || suggestList.contains(target));
+function setActiveMapSelection(mode) {
+  // Ставим обработчик клика по карте
+  myMap.events.once('click', (e) => {
+    const coords = e.get('coords');
+    if (mode === "from") {
+      setFromPoint(coords);
+      geocodePoint(coords, true);
+    } else {
+      setToPoint(coords);
+      geocodePoint(coords, false);
     }
+  });
+  alert("Кликните по карте, чтобы выбрать точку.");
+}
 
-    function setAddressByGeocode(address) {
-      ymaps.geocode(address).then(res => {
-        const obj = res.geoObjects.get(0);
-        if (!obj) {
-          alert("Адрес не найден, попробуйте скорректировать ввод.");
-          return;
-        }
-        const coords = obj.geometry.getCoordinates();
-        if (mode === "start") {
-          setStartPoint(coords);
-        } else {
-          setEndPoint(coords);
-        }
-      }).catch(err => {
-        alert("Ошибка при геокодировании: " + err);
+function setFromPoint(coords) {
+  fromCoords = coords;
+  if (!fromPlacemark) {
+    fromPlacemark = createPlacemark(coords, "Откуда");
+    myMap.geoObjects.add(fromPlacemark);
+  } else {
+    fromPlacemark.geometry.setCoordinates(coords);
+  }
+  recalcRoute();
+}
+
+function setToPoint(coords) {
+  toCoords = coords;
+  if (!toPlacemark) {
+    toPlacemark = createPlacemark(coords, "Куда");
+    myMap.geoObjects.add(toPlacemark);
+  } else {
+    toPlacemark.geometry.setCoordinates(coords);
+  }
+  recalcRoute();
+}
+
+function createPlacemark(coords, label) {
+  return new ymaps.Placemark(coords, { hintContent: label }, {
+    preset: 'islands#blueCircleIcon'
+  });
+}
+
+// Геокодирование
+function geocodePoint(coords, isFrom) {
+  ymaps.geocode(coords).then(res => {
+    const obj = res.geoObjects.get(0);
+    if (!obj) {
+      alert("Не удалось определить адрес, попробуйте ещё раз.");
+      return;
+    }
+    const addressLine = obj.getAddressLine();
+    if (isFrom) {
+      fromAddress = addressLine;
+      document.getElementById("fromInput").value = addressLine;
+      fromReady = true;
+    } else {
+      toAddress = addressLine;
+      document.getElementById("toInput").value = addressLine;
+      toReady = true;
+    }
+    toggleConfirmButton();
+  }).catch(err => {
+    alert("Ошибка геокодирования: " + err);
+  });
+}
+
+// Пересчёт маршрута
+function recalcRoute() {
+  if (!fromCoords || !toCoords) return;
+  if (multiRoute) {
+    myMap.geoObjects.remove(multiRoute);
+  }
+  multiRoute = new ymaps.multiRouter.MultiRoute({
+    referencePoints: [fromCoords, toCoords],
+    params: { routingMode: 'auto' }
+  }, {
+    boundsAutoApply: true
+  });
+  myMap.geoObjects.add(multiRoute);
+}
+
+// Автоподсказки для fromInput
+const fromInput = document.getElementById("fromInput");
+const fromList = document.getElementById("fromSuggestList");
+
+fromInput.addEventListener("input", () => {
+  handleSuggest(fromInput.value, fromList, true);
+});
+fromInput.addEventListener("focus", () => {
+  handleSuggest(fromInput.value, fromList, true);
+});
+
+// Автоподсказки для toInput
+const toInput = document.getElementById("toInput");
+const toList = document.getElementById("toSuggestList");
+
+toInput.addEventListener("input", () => {
+  handleSuggest(toInput.value, toList, false);
+});
+toInput.addEventListener("focus", () => {
+  handleSuggest(toInput.value, toList, false);
+});
+
+function handleSuggest(query, listElem, isFrom) {
+  if (!query || query.length < 3) {
+    listElem.style.display = "none";
+    return;
+  }
+  ymaps.suggest(query).then(items => {
+    listElem.innerHTML = "";
+    if (items.length) {
+      items.forEach(sug => {
+        const li = document.createElement("div");
+        li.className = "suggest-item";
+        li.textContent = sug.displayName || sug.value;
+        li.addEventListener("click", () => {
+          if (isFrom) {
+            fromInput.value = sug.value;
+            fromAddress = sug.value;
+            fromReady = true;
+            geocodeByAddress(sug.value, true);
+          } else {
+            toInput.value = sug.value;
+            toAddress = sug.value;
+            toReady = true;
+            geocodeByAddress(sug.value, false);
+          }
+          listElem.style.display = "none";
+          toggleConfirmButton();
+        });
+        listElem.appendChild(li);
       });
+      listElem.style.display = "block";
+    } else {
+      listElem.style.display = "none";
     }
+  }).catch(err => {
+    console.log("Suggest error:", err);
+  });
+}
 
-    // Кнопка "Отправить"
-    const btnSubmit = document.getElementById("btnSubmit");
-    btnSubmit.addEventListener("click", () => {
-      if (!startAddress || !endAddress) {
-        alert("Укажите начальный и конечный адрес.");
-        return;
-      }
-      if (!tg) {
-        alert("Открыто не в Telegram WebView!");
-        return;
-      }
+// Геокодировать строку
+function geocodeByAddress(address, isFrom) {
+  ymaps.geocode(address).then(res => {
+    const obj = res.geoObjects.get(0);
+    if (!obj) return;
+    const coords = obj.geometry.getCoordinates();
+    if (isFrom) {
+      setFromPoint(coords);
+    } else {
+      setToPoint(coords);
+    }
+  }).catch(err => {
+    console.log("Geocode address error:", err);
+  });
+}
 
-      // Генерируем ссылку на маршрут для менеджера
-      let routeLink = "";
-      if (startCoords && endCoords) {
-        // Проверяйте порядок lat/lon
-        routeLink = `https://yandex.ru/maps/?rtext=${startCoords[0]},${startCoords[1]}~${endCoords[0]},${endCoords[1]}&rtt=auto`;
-      }
+// Показать/скрыть кнопку "Подтвердить адреса"
+function toggleConfirmButton() {
+  const confirmBox = document.getElementById("confirmContainer");
+  if (fromReady && toReady) {
+    confirmBox.classList.remove("hidden");
+  } else {
+    confirmBox.classList.add("hidden");
+  }
+}
 
-      const dataToSend = {
-        start_address: startAddress,
-        end_address: endAddress,
-        distance_km: +distanceKm.toFixed(2),
-        route_link: routeLink
-      };
+// При нажатии "Подтвердить"
+document.getElementById("btnConfirm").addEventListener("click", () => {
+  if (!fromAddress || !toAddress) {
+    alert("Пожалуйста, заполните оба адреса.");
+    return;
+  }
+  if (!tg) {
+    alert("Открыто вне Telegram WebView!");
+    return;
+  }
 
-      tg.sendData(JSON.stringify(dataToSend));
-      tg.close();
-    });
-  </script>
+  // Вычислим расстояние (если нужно)
+  let distanceKm = 0;
+  // Можно взять из multiRoute, если нужно точное значение
+  // Но для простоты сейчас не берём, 
+  // либо берем async, ... 
+  // Здесь покажем упрощённо = 0
+
+  // Сформируем объект
+  const dataToSend = {
+    start_address: fromAddress,
+    end_address: toAddress,
+    distance_km: distanceKm, // Если нужно более точно - получать из multiRoute
+  };
+
+  tg.sendData(JSON.stringify(dataToSend));
+  tg.close();
+});
+</script>
 </body>
 </html>
