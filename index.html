@@ -2,6 +2,8 @@
 <html>
 <head>
   <meta charset="UTF-8">
+  <!-- Добавлен meta viewport для корректного отображения на мобильных устройствах -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Доставка - Выбор адресов</title>
   
   <!-- Telegram WebApp JS -->
@@ -26,103 +28,97 @@
       display: none !important; 
     }
     .header {
-      position: relative;
-      width: 100%;
+      padding: 8px;
       background: #fff;
       box-shadow: 0 2px 5px rgba(0,0,0,0.15);
       z-index: 10;
-      padding: 8px;
     }
     .header h2 {
       text-align: center;
       margin-bottom: 8px;
+      font-size: 20px;
     }
     .address-container {
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 8px;
       padding: 0 8px;
-      margin-bottom: 8px;
+      margin-bottom: 10px;
     }
     .address-block {
       position: relative;
       border: 1px solid #ccc;
       border-radius: 6px;
-      padding: 4px 8px;
+      padding: 8px 8px;
     }
     .address-block label {
-      font-size: 13px;
+      font-size: 14px;
       color: #888;
     }
     .address-block input {
       width: 100%;
       border: none;
       outline: none;
-      font-size: 14px;
-      padding: 2px 0;
+      font-size: 16px;
+      padding: 4px 0;
     }
     .address-block button {
       position: absolute;
       right: 4px;
-      top: 4px;
-      bottom: 4px;
-      margin: auto 0;
+      top: 50%;
+      transform: translateY(-50%);
       background: #f0f0f0;
       border: none;
       border-radius: 4px;
       font-size: 12px;
       cursor: pointer;
+      padding: 4px 8px;
     }
     .suggest-list {
       position: absolute;
       left: 0;
       right: 0;
-      top: 58px;
+      top: 50px;
       max-height: 180px;
       overflow-y: auto;
       background: #fff;
       border: 1px solid #ccc;
       z-index: 9999;
       display: none;
+      font-size: 14px;
     }
     .suggest-item {
-      padding: 6px 8px;
+      padding: 8px;
       cursor: pointer;
     }
     .suggest-item:hover {
       background: #f4f4f4;
     }
-    #map {
-      position: absolute;
-      top: 200px;
-      bottom: 60px;
-      left: 0;
-      right: 0;
-    }
+    /* Переносим кнопку подтверждения под адресной формой */
     .confirm-btn {
-      position: absolute;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      height: 60px;
-      background: #fff;
-      box-shadow: 0 -2px 5px rgba(0,0,0,0.15);
-      z-index: 15;
-      display: flex;
-      justify-content: center;
-      align-items: center;
+      margin: 10px 8px;
+      text-align: center;
     }
     .confirm-btn button {
-      padding: 12px 20px;
+      width: 100%;
+      padding: 12px;
       border-radius: 8px;
       background: #fc5230;
       color: #fff;
       border: none;
-      font-size: 16px;
+      font-size: 18px;
       cursor: pointer;
     }
-    .hidden {
-      display: none !important;
+    /* Карта занимает оставшуюся часть экрана */
+    #map {
+      width: 100%;
+      height: calc(100% - 320px); /* Пример: высота заголовка и блока адресов */
+    }
+    /* Дополнительные стили для адаптивности */
+    @media screen and (max-width: 480px) {
+      .header h2 { font-size: 18px; }
+      .address-block input { font-size: 16px; }
+      .confirm-btn button { font-size: 16px; }
     }
   </style>
 </head>
@@ -146,13 +142,13 @@
       <div class="suggest-list" id="toSuggestList"></div>
     </div>
   </div>
+  <!-- Кнопка подтверждения размещается сразу под формой адресов -->
+  <div class="confirm-btn hidden" id="confirmContainer">
+    <button id="btnConfirm">Подтвердить адреса</button>
+  </div>
 </div>
 
 <div id="map"></div>
-
-<div class="confirm-btn hidden" id="confirmContainer">
-  <button id="btnConfirm">Подтвердить адреса</button>
-</div>
 
 <script>
   const tg = window.Telegram?.WebApp || null;
@@ -172,8 +168,6 @@
       center: [55.751574, 37.573856],
       zoom: 10
     });
-
-    // Пытаемся получить текущее местоположение через Geolocation API
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(pos => {
         const lat = pos.coords.latitude;
@@ -183,7 +177,6 @@
         geocodePoint([lat, lon], true);
       }, err => {
         console.log("Geolocation error:", err);
-        // Если нет доступа – оставляем placeholder для ручного ввода
       });
     }
   }
@@ -239,7 +232,6 @@
     return new ymaps.Placemark(coords, { hintContent: label }, { preset: 'islands#blueCircleIcon' });
   }
 
-  // Геокодирование по координатам для получения адреса
   function geocodePoint(coords, isFrom) {
     ymaps.geocode(coords).then(res => {
       const obj = res.geoObjects.get(0);
@@ -260,7 +252,6 @@
     });
   }
 
-  // Пересчёт маршрута между выбранными точками
   function recalcRoute() {
     if (!fromCoords || !toCoords) return;
     if (multiRoute) {
@@ -281,8 +272,7 @@
     myMap.geoObjects.add(multiRoute);
   }
 
-  // --- Автоподсказки для полей "Откуда" и "Куда" ---
-  // Используем встроенный метод ymaps.suggest (с ключом suggest_apikey, указанным в URL подключения)
+  // Автоподсказки для полей "Откуда" и "Куда"
   const fromInput = document.getElementById("fromInput");
   const fromSuggestList = document.getElementById("fromSuggestList");
   fromInput.addEventListener("input", () => {
@@ -347,7 +337,6 @@
     }
   });
 
-  // Для поля "Куда":
   const toInput = document.getElementById("toInput");
   const toSuggestList = document.getElementById("toSuggestList");
   toInput.addEventListener("input", () => {
@@ -448,7 +437,6 @@
       alert("Открыто не в Telegram WebView!");
       return;
     }
-    // Формируем ссылку на маршрут (ссылка для открытия маршрута в Яндекс.Картах)
     let routeLink = "";
     if (fromCoords && toCoords) {
       routeLink = `https://yandex.ru/maps/?rtext=${fromCoords[0]},${fromCoords[1]}~${toCoords[0]},${toCoords[1]}&rtt=auto`;
