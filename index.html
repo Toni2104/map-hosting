@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Доставка - Выбор адресов (как Яндекс.Такси)</title>
+  <title>Доставка - Выбор адресов</title>
   
   <!-- Telegram WebApp JS -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -19,6 +19,11 @@
       width: 100%;
       height: 100%;
       background: #fff;
+    }
+    /* Скрываем встроенный блок поиска Яндекс, чтобы не вводить пользователя в заблуждение */
+    .ymaps-2-1-79-search,
+    .ymaps-2-1-79-searchbox { 
+      display: none !important; 
     }
     .header {
       position: relative;
@@ -157,10 +162,10 @@
   let fromAddress = "", toAddress = "";
   let fromPlacemark, toPlacemark;
   let multiRoute = null;
-  let distanceKm = 0; // Здесь будем хранить рассчитанное расстояние
+  let distanceKm = 0; // рассчитанное расстояние
   let fromReady = false, toReady = false;
 
-  // Инициализация карты после загрузки API Яндекс.Карт
+  // Инициализация карты
   ymaps.ready(initMap);
   function initMap() {
     myMap = new ymaps.Map("map", {
@@ -178,7 +183,7 @@
         geocodePoint([lat, lon], true);
       }, err => {
         console.log("Geolocation error:", err);
-        // Если не удалось получить местоположение, оставляем placeholder для ручного ввода
+        // Если нет доступа – оставляем placeholder для ручного ввода
       });
     }
   }
@@ -190,10 +195,8 @@
   document.getElementById("toMapBtn").addEventListener("click", () => {
     activateMapClick("to");
   });
-
   function activateMapClick(mode) {
     alert("Кликните по карте, чтобы выбрать точку.");
-    // Один клик по карте сработает один раз:
     myMap.events.once('click', (e) => {
       const coords = e.get('coords');
       if (mode === "from") {
@@ -279,9 +282,7 @@
   }
 
   // --- Автоподсказки для полей "Откуда" и "Куда" ---
-  // Используем встроенный метод ymaps.suggest; благодаря параметру suggest_apikey в URL он будет доступен.
-
-  // Для поля "Откуда":
+  // Используем встроенный метод ymaps.suggest (с ключом suggest_apikey, указанным в URL подключения)
   const fromInput = document.getElementById("fromInput");
   const fromSuggestList = document.getElementById("fromSuggestList");
   fromInput.addEventListener("input", () => {
@@ -301,7 +302,6 @@
             fromInput.value = sug.value;
             fromAddress = sug.value;
             fromReady = true;
-            // Получаем координаты выбранного адреса
             geocodeByString(sug.value, true);
             fromSuggestList.style.display = "none";
             toggleConfirmButton();
@@ -448,10 +448,16 @@
       alert("Открыто не в Telegram WebView!");
       return;
     }
+    // Формируем ссылку на маршрут (ссылка для открытия маршрута в Яндекс.Картах)
+    let routeLink = "";
+    if (fromCoords && toCoords) {
+      routeLink = `https://yandex.ru/maps/?rtext=${fromCoords[0]},${fromCoords[1]}~${toCoords[0]},${toCoords[1]}&rtt=auto`;
+    }
     const dataToSend = {
       start_address: fromAddress,
       end_address: toAddress,
-      distance_km: Number(distanceKm.toFixed(2))
+      distance_km: Number(distanceKm.toFixed(2)),
+      route_link: routeLink
     };
     tg.sendData(JSON.stringify(dataToSend));
     tg.close();
