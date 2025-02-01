@@ -3,10 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <title>Доставка - Выбор адресов (как Яндекс.Такси)</title>
+  
   <!-- Telegram WebApp JS -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <!-- Яндекс.Карты (JS API). Подставьте свой реальный ключ -->
-  <script src="https://api-maps.yandex.ru/2.1/?lang=ru_RU&apikey=2021b8f1-f2b9-48e5-acca-0c61f734e5ae"></script>
+
+  <!-- Yandex.Maps JS API: укажите ваш ключ для JS API и ключ для Suggest API -->
+  <script src="https://api-maps.yandex.ru/2.1/?lang=ru_RU&apikey=2021b8f1-f2b9-48e5-acca-0c61f734e5ae&suggest_apikey=ad9d887b-b188-4726-90d0-721d09f29c7f"></script>
+
   <style>
     * {
       margin: 0; padding: 0; box-sizing: border-box;
@@ -67,7 +70,8 @@
     }
     .suggest-list {
       position: absolute;
-      left: 0; right: 0;
+      left: 0;
+      right: 0;
       top: 58px;
       max-height: 180px;
       overflow-y: auto;
@@ -87,11 +91,14 @@
       position: absolute;
       top: 200px;
       bottom: 60px;
-      left: 0; right: 0;
+      left: 0;
+      right: 0;
     }
     .confirm-btn {
       position: absolute;
-      left: 0; right: 0; bottom: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
       height: 60px;
       background: #fff;
       box-shadow: 0 -2px 5px rgba(0,0,0,0.15);
@@ -119,14 +126,14 @@
 <div class="header">
   <h2>Выберите адреса</h2>
   <div class="address-container">
-    <!-- Адрес 1 -->
+    <!-- Адрес "Откуда" -->
     <div class="address-block" id="fromBlock">
       <label for="fromInput">Откуда:</label>
       <input type="text" id="fromInput" placeholder="Моё местоположение" autocomplete="off"/>
       <button type="button" id="fromMapBtn">На карте</button>
       <div class="suggest-list" id="fromSuggestList"></div>
     </div>
-    <!-- Адрес 2 -->
+    <!-- Адрес "Куда" -->
     <div class="address-block" id="toBlock">
       <label for="toInput">Куда:</label>
       <input type="text" id="toInput" placeholder="Адрес назначения" autocomplete="off"/>
@@ -150,19 +157,18 @@
   let fromAddress = "", toAddress = "";
   let fromPlacemark, toPlacemark;
   let multiRoute = null;
-  let distanceKm = 0; // рассчитанное расстояние
+  let distanceKm = 0; // Здесь будем хранить рассчитанное расстояние
   let fromReady = false, toReady = false;
 
   // Инициализация карты после загрузки API Яндекс.Карт
   ymaps.ready(initMap);
-
   function initMap() {
     myMap = new ymaps.Map("map", {
       center: [55.751574, 37.573856],
       zoom: 10
     });
 
-    // Пытаемся получить текущее местоположение через Geolocation API браузера
+    // Пытаемся получить текущее местоположение через Geolocation API
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(pos => {
         const lat = pos.coords.latitude;
@@ -172,7 +178,7 @@
         geocodePoint([lat, lon], true);
       }, err => {
         console.log("Geolocation error:", err);
-        // Если ошибка – можно оставить placeholder как есть
+        // Если не удалось получить местоположение, оставляем placeholder для ручного ввода
       });
     }
   }
@@ -187,7 +193,7 @@
 
   function activateMapClick(mode) {
     alert("Кликните по карте, чтобы выбрать точку.");
-    // Следующий клик по карте сработает один раз:
+    // Один клик по карте сработает один раз:
     myMap.events.once('click', (e) => {
       const coords = e.get('coords');
       if (mode === "from") {
@@ -227,14 +233,10 @@
   }
 
   function createPlacemark(coords, label) {
-    return new ymaps.Placemark(coords, {
-      hintContent: label
-    }, {
-      preset: 'islands#blueCircleIcon'
-    });
+    return new ymaps.Placemark(coords, { hintContent: label }, { preset: 'islands#blueCircleIcon' });
   }
 
-  // Геокодирование по координатам
+  // Геокодирование по координатам для получения адреса
   function geocodePoint(coords, isFrom) {
     ymaps.geocode(coords).then(res => {
       const obj = res.geoObjects.get(0);
@@ -246,18 +248,16 @@
       if (isFrom) {
         fromAddress = addressLine;
         document.getElementById("fromInput").value = addressLine;
-        saveAddress(addressLine);
       } else {
         toAddress = addressLine;
         document.getElementById("toInput").value = addressLine;
-        saveAddress(addressLine);
       }
     }).catch(err => {
       console.log("Geocode error:", err);
     });
   }
 
-  // Пересчёт маршрута между точками
+  // Пересчёт маршрута между выбранными точками
   function recalcRoute() {
     if (!fromCoords || !toCoords) return;
     if (multiRoute) {
@@ -278,90 +278,140 @@
     myMap.geoObjects.add(multiRoute);
   }
 
-  // --- Работа автоподсказок ---
+  // --- Автоподсказки для полей "Откуда" и "Куда" ---
+  // Используем встроенный метод ymaps.suggest; благодаря параметру suggest_apikey в URL он будет доступен.
 
-  // При фокусе и вводе: если поле пустое – показываем сохранённые адреса,
-  // иначе – вызываем ymaps.suggest
+  // Для поля "Откуда":
   const fromInput = document.getElementById("fromInput");
   const fromSuggestList = document.getElementById("fromSuggestList");
   fromInput.addEventListener("input", () => {
     const query = fromInput.value.trim();
-    if (!query) {
-      showPreviousAddresses(fromSuggestList, true);
-    } else {
-      handleSuggest(query, fromSuggestList, true);
-    }
-  });
-  fromInput.addEventListener("focus", () => {
-    const query = fromInput.value.trim();
-    if (!query) {
-      showPreviousAddresses(fromSuggestList, true);
-    } else {
-      handleSuggest(query, fromSuggestList, true);
-    }
-  });
-
-  const toInput = document.getElementById("toInput");
-  const toSuggestList = document.getElementById("toSuggestList");
-  toInput.addEventListener("input", () => {
-    const query = toInput.value.trim();
-    if (!query) {
-      showPreviousAddresses(toSuggestList, false);
-    } else {
-      handleSuggest(query, toSuggestList, false);
-    }
-  });
-  toInput.addEventListener("focus", () => {
-    const query = toInput.value.trim();
-    if (!query) {
-      showPreviousAddresses(toSuggestList, false);
-    } else {
-      handleSuggest(query, toSuggestList, false);
-    }
-  });
-
-  // Функция вызова автоподсказок через API Яндекс.Карт
-  function handleSuggest(query, listElem, isFrom) {
     if (!query || query.length < 3) {
-      listElem.style.display = "none";
+      fromSuggestList.style.display = "none";
       return;
     }
     ymaps.suggest(query).then(items => {
-      listElem.innerHTML = "";
-      if (items && items.length > 0) {
+      fromSuggestList.innerHTML = "";
+      if (items && items.length) {
         items.forEach(sug => {
           const div = document.createElement("div");
           div.className = "suggest-item";
           div.textContent = sug.displayName || sug.value;
           div.addEventListener("click", () => {
-            if (isFrom) {
-              fromInput.value = sug.value;
-              fromAddress = sug.value;
-              fromReady = true;
-              saveAddress(sug.value);
-              geocodeByString(sug.value, true);
-            } else {
-              toInput.value = sug.value;
-              toAddress = sug.value;
-              toReady = true;
-              saveAddress(sug.value);
-              geocodeByString(sug.value, false);
-            }
-            listElem.style.display = "none";
+            fromInput.value = sug.value;
+            fromAddress = sug.value;
+            fromReady = true;
+            // Получаем координаты выбранного адреса
+            geocodeByString(sug.value, true);
+            fromSuggestList.style.display = "none";
             toggleConfirmButton();
           });
-          listElem.appendChild(div);
+          fromSuggestList.appendChild(div);
         });
-        listElem.style.display = "block";
+        fromSuggestList.style.display = "block";
       } else {
-        listElem.style.display = "none";
+        fromSuggestList.style.display = "none";
       }
     }).catch(err => {
       console.log("Suggest error:", err);
     });
-  }
+  });
+  
+  fromInput.addEventListener("focus", () => {
+    const query = fromInput.value.trim();
+    if (query && query.length >= 3) {
+      ymaps.suggest(query).then(items => {
+        fromSuggestList.innerHTML = "";
+        if (items && items.length) {
+          items.forEach(sug => {
+            const div = document.createElement("div");
+            div.className = "suggest-item";
+            div.textContent = sug.displayName || sug.value;
+            div.addEventListener("click", () => {
+              fromInput.value = sug.value;
+              fromAddress = sug.value;
+              fromReady = true;
+              geocodeByString(sug.value, true);
+              fromSuggestList.style.display = "none";
+              toggleConfirmButton();
+            });
+            fromSuggestList.appendChild(div);
+          });
+          fromSuggestList.style.display = "block";
+        } else {
+          fromSuggestList.style.display = "none";
+        }
+      }).catch(err => {
+        console.log("Suggest error:", err);
+      });
+    }
+  });
 
-  // Функция геокодирования по строке
+  // Для поля "Куда":
+  const toInput = document.getElementById("toInput");
+  const toSuggestList = document.getElementById("toSuggestList");
+  toInput.addEventListener("input", () => {
+    const query = toInput.value.trim();
+    if (!query || query.length < 3) {
+      toSuggestList.style.display = "none";
+      return;
+    }
+    ymaps.suggest(query).then(items => {
+      toSuggestList.innerHTML = "";
+      if (items && items.length) {
+        items.forEach(sug => {
+          const div = document.createElement("div");
+          div.className = "suggest-item";
+          div.textContent = sug.displayName || sug.value;
+          div.addEventListener("click", () => {
+            toInput.value = sug.value;
+            toAddress = sug.value;
+            toReady = true;
+            geocodeByString(sug.value, false);
+            toSuggestList.style.display = "none";
+            toggleConfirmButton();
+          });
+          toSuggestList.appendChild(div);
+        });
+        toSuggestList.style.display = "block";
+      } else {
+        toSuggestList.style.display = "none";
+      }
+    }).catch(err => {
+      console.log("Suggest error:", err);
+    });
+  });
+  
+  toInput.addEventListener("focus", () => {
+    const query = toInput.value.trim();
+    if (query && query.length >= 3) {
+      ymaps.suggest(query).then(items => {
+        toSuggestList.innerHTML = "";
+        if (items && items.length) {
+          items.forEach(sug => {
+            const div = document.createElement("div");
+            div.className = "suggest-item";
+            div.textContent = sug.displayName || sug.value;
+            div.addEventListener("click", () => {
+              toInput.value = sug.value;
+              toAddress = sug.value;
+              toReady = true;
+              geocodeByString(sug.value, false);
+              toSuggestList.style.display = "none";
+              toggleConfirmButton();
+            });
+            toSuggestList.appendChild(div);
+          });
+          toSuggestList.style.display = "block";
+        } else {
+          toSuggestList.style.display = "none";
+        }
+      }).catch(err => {
+        console.log("Suggest error:", err);
+      });
+    }
+  });
+  
   function geocodeByString(address, isFrom) {
     ymaps.geocode(address).then(res => {
       const obj = res.geoObjects.get(0);
@@ -379,49 +429,7 @@
       console.log("GeocodeByString error:", err);
     });
   }
-
-  // Сохранение адреса в localStorage
-  function saveAddress(address) {
-    let addresses = JSON.parse(localStorage.getItem("previousAddresses") || "[]");
-    if (addresses.indexOf(address) === -1) {
-      addresses.push(address);
-      localStorage.setItem("previousAddresses", JSON.stringify(addresses));
-    }
-  }
-
-  // Показ ранее введённых адресов (если поле пустое)
-  function showPreviousAddresses(listElem, isFrom) {
-    let addresses = JSON.parse(localStorage.getItem("previousAddresses") || "[]");
-    listElem.innerHTML = "";
-    if (addresses.length > 0) {
-      addresses.forEach(addr => {
-        const div = document.createElement("div");
-        div.className = "suggest-item";
-        div.textContent = addr;
-        div.addEventListener("click", () => {
-          if (isFrom) {
-            fromInput.value = addr;
-            fromAddress = addr;
-            fromReady = true;
-            geocodeByString(addr, true);
-          } else {
-            toInput.value = addr;
-            toAddress = addr;
-            toReady = true;
-            geocodeByString(addr, false);
-          }
-          listElem.style.display = "none";
-          toggleConfirmButton();
-        });
-        listElem.appendChild(div);
-      });
-      listElem.style.display = "block";
-    } else {
-      listElem.style.display = "none";
-    }
-  }
-
-  // Показываем кнопку подтверждения, если оба адреса выбраны
+  
   function toggleConfirmButton() {
     const confirmContainer = document.getElementById("confirmContainer");
     if (fromReady && toReady) {
@@ -430,8 +438,7 @@
       confirmContainer.classList.add("hidden");
     }
   }
-
-  // При нажатии "Подтвердить адреса" отправляем данные в Telegram
+  
   document.getElementById("btnConfirm").addEventListener("click", () => {
     if (!fromAddress || !toAddress) {
       alert("Пожалуйста, укажите оба адреса.");
